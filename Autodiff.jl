@@ -1,44 +1,64 @@
-import Base: +, /, -, *, ^, convert, promote_rule
-using Printf
-
+# Rules
+import Base: +, /, -, *, sqrt, exp, log, sin, cos, convert, promote_rule
 
 # Function-derivative pair
-struct DoubleNumber <: Number
+struct DualNumber <: Number
     f::Tuple{Float64, Float64}
 end
 
-# Rules
-+(x::DoubleNumber, y::DoubleNumber) = DoubleNumber(x.f .+ y.f)
--(x::DoubleNumber, y::DoubleNumber) = DoubleNumber(x.f .- y.f)
-/(x::DoubleNumber, y::DoubleNumber) = DoubleNumber((x.f[1] / y.f[1], (y.f[1]*x.f[2] - x.f[1]*y.f[2])/(y.f[1]^2)))
-*(x::DoubleNumber, y::DoubleNumber) = DoubleNumber((x.f[1] * y.f[1], x.f[2]*y.f[1] + x.f[1]*y.f[2]))
-^(x::DoubleNumber, y::Int) = DoubleNumber((x.f[1]^y, x.f[2]^y))
-convert(::Type{DoubleNumber}, x::Real) = DoubleNumber((x, zero(x)))
-promote_rule(::Type{DoubleNumber}, ::Type{<:Number}) = DoubleNumber
+# Base rules
++(x::DualNumber, y::DualNumber) = DualNumber(x.f .+ y.f)
+-(x::DualNumber, y::DualNumber) = DualNumber(x.f .- y.f)
+/(x::DualNumber, y::DualNumber) = DualNumber((x.f[1] / y.f[1], (y.f[1]*x.f[2] - x.f[1]*y.f[2])/(y.f[1]^2)))
+*(x::DualNumber, y::DualNumber) = DualNumber((x.f[1] * y.f[1], x.f[2]*y.f[1] + x.f[1]*y.f[2]))
+
+# Functions
+sin(x::DualNumber) = DualNumber((sin(x.f[1]), x.f[2]*cos(x.f[1])))
+cos(x::DualNumber) = DualNumber((cos(x.f[1]), -x.f[2]*sin(x.f[1])))
+exp(x::DualNumber) = DualNumber((exp(x.f[1]), x.f[2]*exp(x.f[1])))
+log(x::DualNumber) = DualNumber((log(x.f[1]), x.f[2]/x.f[1]))
+sqrt(x::DualNumber) = DualNumber((sqrt(x.f[1]), 1/(2*sqrt(x.f[1]))))
+
+# Implement
+convert(::Type{DualNumber}, x::Real) = DualNumber((x, zero(x)))
+promote_rule(::Type{DualNumber}, ::Type{<:Number}) = DualNumber
 
 
-# Babilonian square root function
-function BSR(x, Iterations=10)
-    value = (x + 1)/2
-    
-    for i = 2:Iterations
-        value = (value + x/value)/2
-    end
+global dn = DualNumber((49, 1))
 
-    return value
+# Example function
+example(x) = sqrt(x)*log(x)
+
+# Fast forward differentiation
+derivative(func::Function, x::Number, e::Float64) = (func(x + e) - func(x)) / e
+
+function test()
+    i = 100000000
+    r = 0
+    @time(
+        while i > 0
+            r+=derivative(example, 49, 0.00001)
+            i-=1
+        end
+    )
+    println(r)
+
+    i = 100000000
+    r = 0
+    @time(
+        while i > 0
+            r+=example(DualNumber((49, 1)))
+            i-=1
+        end
+    )
+    println(r)
+
+    println("derivative fast forward: ", derivative(example, 49, 0.00001))
+    println("dual number no derivative and derivative: ", example(DualNumber((49, 1))))
+
+    println(abs(0.4208443070079019007293361062061685328052978185116944554941985928-derivative(example, 49, 0.00001)))
+    println(abs(0.4208443070079019007293361062061685328052978185116944554941985928-example(DualNumber((49, 1))).f[2]))
 end
 
-# fast forward differentiation
-derivative(func, x, e) = (func(x + e) - func(x)) / e
-
-function example()
-    der_sqr = BSR(DoubleNumber((49, 1)))
-    println("Square Root derivative with dual number and forward differentiation:\n")
-    @printf("Dual Number:\nSquare root of 49: %i\nDerivative of this square root: %f\n", der_sqr.f[1], der_sqr.f[2])
-    println("And this only took about 3 microseconds to compute both of the values")
-    println("When we compare it with the result of wolfram alpha we can")
-    println("say that the values are exact: ", "|0.07142857142857142 - ", der_sqr.f[2], "| = ", 0.07142857142857142 -der_sqr.f[2])
-end
-
-example()
+test()
 
